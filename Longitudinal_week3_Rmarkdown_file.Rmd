@@ -1,0 +1,461 @@
+---
+title: "Practical 3"
+date: "02/03/2022"
+output: pdf_document
+---
+1. We will proceed with analysis of the dataset of tutorial 1 and 2 on serum cholesterol from
+the National Cooperative Gallstone Study.
+
+Lets start with model 4 of exercise 3 of tutorial 2. The code to fit this model was
+```{r,echo=FALSE,message=F,warning=F}
+#ggplot2: producing nicer plots
+if(!require(ggplot2)) {
+  install.packages("ggplot2"); require(ggplot2)}
+#tidyr: allows for easier data munipulation
+if(!require(tidyr)) {
+  install.packages("tidyr"); require(tidyr)}
+#mvtnorm: allows to simulate from multivariate normal
+if(!require(mvtnorm)) {
+  install.packages("mvtnorm"); require(mvtnorm)}
+#knitr: allows to produce nicer tables as summary
+if(!require(knitr)) {
+  install.packages("mvtnorm"); require(knitr)}
+#nmle
+if(!require(nlme)) {
+  install.packages("nlme"); require(nlme)}
+#nmle
+if(!require(readstata13)) {
+  install.packages("readstata13"); require(readstata13)}
+#survey
+if(!require(car)) {
+  install.packages("car"); require(survey)}
+#set your working directory
+if(!require(plyr)) {
+  install.packages("plyr"); require(plyr) }
+
+```
+
+```{r,warning=F,message=F}
+dataall<-read.table("datachol.txt")
+colnames(dataall)<-c("grp","id","t1","t2","t3","t4","t5")
+data<-as.data.frame(dataall)
+dataalllong<-reshape(dataall, idvar="id", 
+                     varying=c("t1","t2","t3","t4","t5"),
+                     v.names="Y",timevar="time",time=c(0,6,12,20,24),
+                     direction="long")
+dataalllong$Y<-as.numeric(dataalllong$Y)
+week.f <- factor(dataalllong$time, c(0,6,12,20,24))
+tt<-as.integer(week.f)
+model4 <- lme(Y ~ grp*week.f, random= ~1| id,data=dataalllong,method="REML",na.action=na.omit)
+summary(model4)
+```
+Write down the estimates for the mean of the response Y for the five time points for grp=0 and for grp=1 based on this model.
+```{r}
+#mean at time 0 for group1
+mean_time0_grp1<-model4$coefficients$fixed[1]
+#mean at time 0 for group2
+mean_time0_grp2<-sum(model4$coefficients$fixed[1:2])
+#mean at time 6 for group1
+mean_time6_grp1<-sum(model4$coefficients$fixed[c(1,3)])
+#mean at time 6 for group2
+mean_time6_grp2<-sum(model4$coefficients$fixed[1:3])+model4$coefficients$fixed[7]
+#mean at time 12 for group1
+mean_time12_grp1<-sum(model4$coefficients$fixed[c(1,4)])
+#mean at time 12 for group2
+mean_time12_grp2<-sum(model4$coefficients$fixed[1:2])+sum(model4$coefficients$fixed[c(4,8)]) 
+#mean at time 20 for group1
+mean_time20_grp1<-sum(model4$coefficients$fixed[c(1,5)])
+#mean at time 20 for group2
+mean_time20_grp2<-sum(model4$coefficients$fixed[1:2])+sum(model4$coefficients$fixed[c(5,9)]) 
+#mean at time 24 for group1
+mean_time24_grp1<-sum(model4$coefficients$fixed[c(1,6)])
+#mean at time 24 for group2
+mean_time24_grp2<-sum(model4$coefficients$fixed[1:2])+sum(model4$coefficients$fixed[c(6,10)]) 
+
+mean_grp1_mod4<-c(mean_time0_grp1,mean_time6_grp1,mean_time12_grp1,mean_time20_grp1,mean_time24_grp1)
+mean_grp2_mod4<-c(mean_time0_grp2,mean_time6_grp2,mean_time12_grp2,mean_time20_grp2,mean_time24_grp2)
+mean_mod4<-as.data.frame(cbind(as.numeric(mean_grp1_mod4),as.numeric(mean_grp2_mod4))) 
+colnames(mean_mod4)<-c("group 1","group 2")
+
+```
+Use a wald type of test statistic to test whether there is a difference in mean between the response at time=20 and time = 24 in grp=0.
+```{r}
+#you can use the linearHypothesis function
+#you need to specify your linear hypothesis in "" 
+#use the exact names of the coefficients
+linearHypothesis(model4,"week.f24 - week.f20=0") 
+#p-value>0.05
+#The two means are not significantly different
+
+```
+## Question (b)
+Now looking at the coefficents in (a) the relationship might not be linear in time. On the other hand the standard errors are huge.
+```{r}
+model4$coef$fixed
+#plot coefficients from model 4
+plot(c(0,6,12,20,24),c(0,model4$coef$fixed[3:6]),xlab="time points",ylab="fixed effects")
+```
+So let’s fit a linear model while keeping in mind that the mean structure might not fit well. Include a random intercept in the model.
+
+```{r}
+#time is treated as a continuous covariate
+model5<-lme(Y ~ grp*time, random= ~1| id,data=dataalllong, method="REML",na.action=na.omit)
+summary(model5)
+```
+Write down the estimates for the mean of the response Y for the five time points for grp=0 and for grp=1 based on this new model.
+```{r}
+#mean at time 0 for group1
+mean_time0_grp1_mod5<-model5$coefficients$fixed[1]
+#mean at time 0 for group2
+mean_time0_grp2_mod5<-sum(model5$coefficients$fixed[1:2])
+#mean at time 6 for group1
+mean_time6_grp1_mod5<-model5$coefficients$fixed[1]+6*model5$coefficients$fixed[3]
+#mean at time 6 for group2
+mean_time6_grp2_mod5<-sum(model5$coefficients$fixed[1:2])+6*sum(model5$coefficients$fixed[3:4])
+#mean at time 12 for group1
+mean_time12_grp1_mod5<-model5$coefficients$fixed[1]+12*model5$coefficients$fixed[3]
+#mean at time 12 for group2
+mean_time12_grp2_mod5<-sum(model5$coefficients$fixed[1:2])+12*sum(model5$coefficients$fixed[3:4])
+#mean at time 20 for group1
+mean_time20_grp1_mod5<-model5$coefficients$fixed[1]+20*model5$coefficients$fixed[3]
+#mean at time 20 for group2
+mean_time20_grp2_mod5<-sum(model5$coefficients$fixed[1:2])+20*sum(model5$coefficients$fixed[3:4])
+#mean at time 24 for group1
+mean_time24_grp1_mod5<-model5$coefficients$fixed[1]+24*model5$coefficients$fixed[3]
+#mean at time 24 for group2
+mean_time24_grp2_mod5<-sum(model5$coefficients$fixed[1:2])+24*sum(model5$coefficients$fixed[3:4])
+
+mean_grp1_mod5<-c(mean_time0_grp1_mod5,mean_time6_grp1_mod5,
+                  mean_time12_grp1_mod5,mean_time20_grp1_mod5,mean_time24_grp1_mod5)
+mean_grp2_mod5<-c(mean_time0_grp2_mod5,mean_time6_grp2_mod5,
+                  mean_time12_grp2_mod5,mean_time20_grp2_mod5,mean_time24_grp2_mod5)
+mean_mod5<-as.data.frame(cbind(as.numeric(mean_grp1_mod5),as.numeric(mean_grp2_mod5)))
+colnames(mean_mod5)<-c("group 1","group 2")
+mean_mod5$times<-c(0,6,12,20,24)
+
+```
+Compare these estimates with the ones in (a). 
+```{r}
+print(cbind(mean_mod4,mean_mod5))
+```
+What is the estimate for the variance of the random intercept?
+```{r}
+getVarCov(model5)
+#1402.3
+```
+## Question c
+Now fit a random slope model. Give the covariance matrix of the random effects.
+```{r}
+#fit the model
+model6<-lme(Y ~ grp*time, random= ~1+time| id,data=dataalllong, method="REML",na.action=na.omit)
+summary(model6)
+#get the variance-covariance matrix
+getVarCov(model6)
+```
+## Question d
+Now compare the models from b (model5) and c (model6) using
+```{r}
+#compare the two models
+anova(model5,model6)
+#mixture of two chi-squares with 1 dof and 2 dof
+critical_value<-(qchisq(0.95,1)+qchisq(0.95,2))/2
+#value of the LRT
+test_value<-4.912
+#decision
+test_value<critical_value
+```
+## Question e
+Check the fit of the two models:
+```{r}
+qqnorm(model5, ~ resid(., type = "n") )
+qqnorm(model6, ~ resid(., type = "n") )
+Variogram(model5)
+Variogram(model6)
+```
+Formulate your conclusions:
+
+## Question f
+Finally compare model 5 with model 4. Can we assume a linear model for time in the mean structure? For comparisson of the models, you can use the function anova, but you have to use update to change the method of estimation (Why?):
+```{r}
+anova(update(model5,method="ML"),update(model4,method="ML"))
+```
+What is your conclusion? From the models 4 to 6 which one would you prefer? What would be a next model to fit?
+\newpage
+## Exercise 2
+Fit a model with randomly varying intercepts and slopes, and allow the mean values of the intercept and slope to depend on treament group (i.e inlude main effect of treatment, a linear time trend, and a treatment by linear time interaction as fixed effects)
+```{r}
+#read the data set
+dat <- read.dta13("exercise.dta")
+#read the data in long format
+datalong <- reshape(dat, idvar="ID", varying=c("y0","y2","y4","y6","y8","y10","y12"),v.names="Y", 
+                    timevar="time",time=c(0,2,4,6,8,10,12), direction="long")
+#fit the linear mixed model with random intercept and slope
+model7<-lme(Y ~ group*time, random= ~1+time| ID,data=datalong, method="REML",na.action=na.omit)
+#look at the summary of your model
+summary(model7)
+```
+What is the estimated covariance matrix of the random effects? 
+```{r}
+getVarCov(model7)
+```
+Based on the model provide 95% intervals for the values of the intercepts for subjects and for the values of the slopes for subjects.
+```{r}
+#95% confidence interval for the intercept
+lower_bound_intercept<-model7$coefficients$fixed[1]-
+  1.96*9.953
+upper_bound_intercept<-model7$coefficients$fixed[1]+
+  1.96*9.953
+print(c(lower_bound_intercept,upper_bound_intercept))
+#95% confidence interval for the slope
+lower_bound_slope<-model7$coefficients$fixed[3]-
+  1.96*0.0343
+upper_bound_slope<-model7$coefficients$fixed[3]+
+  1.96*0.0343
+```
+## Question (b)
+Do we need the random slope in the model?
+```{r}
+#fit the model without the random slope
+model8<-lme(Y ~ group*time, random= ~1| ID,data=datalong, method="REML",na.action=na.omit)
+#compare the two models
+anova(model8,model7)
+#mixtures of two chi-squares with 1 dof and 2 dof
+critical_value<-(qchisq(0.95,1)+qchisq(0.95,2))/2
+#value of the LRT
+observed_test<-62.671
+#decision
+observed_test<critical_value
+```
+
+
+## Question (c)
+Give the mean intercept and slope for the two groups based on model from (a)
+```{r}
+#mean intercept group 1
+mean(coef(model7)[1:16,1])
+#mean intercept group 2
+mean(coef(model7)[17:37,1])
+
+#give the mean slope for the two groups
+#mean slope group 1
+mean(coef(model7)[1:16,3])
+#mean slope group 2
+mean(coef(model7)[17:37,3])
+```
+## Question d
+Based on the previous results, interpret the effect of treatment on changes in strength. Does your analyses suggest a difference between the two groups?
+
+## Question e
+Give the estimate of $VAR(Y_{i1}|b)$ and $VAR(Y_{i1})$
+```{r}
+#conditional variance at time 1 VAR(Yi1|bi)
+cond_var<-(sigma(model7))^2
+print(cond_var)
+#extract the variance of the random intercept and slope
+getVarCov(model7)
+#unconditional variance at time 1 VAR(Yi1)
+uncond_var<-(sigma(model7))^2+9.953+1*0.03-0.016846 
+print(uncond_var)
+```
+
+## Question f
+Obtain the predicted intercept and slope (BLUP) for each subject.
+```{r}
+coef(model7)[c(1,3)]
+#predicted intercept per subject: first column
+#predicted slope per subject: second column
+```
+
+## Question g
+Now select the data on subject 24 and estimate a linear model for this subject by using OLS and compare the obtained estimates with the ones obtained in (f). How and why are they different?
+
+```{r}
+#select data from subject 24
+data_subject24<-datalong[datalong$id=="24",]
+#fit a linear model by using OLS
+model_subject24<-lm(Y~time,data_subject24)
+
+coef_subject24<-as.data.frame(model_subject24$coefficients)
+#slope and intercept for subject 24 obtained in f
+coef(model7)[24,c(1,3)]
+#look at the estimates for the slope and the intercept
+#slope and intercept for subject 24 using the linear model
+model_subject24$coefficients
+
+```
+
+
+## Exercise 3
+Simulation study on missing data:
+## Question a
+Check that you understand the program. How many individuals are in the data? How many time points? Why is the missing data mechanism MAR in datMAR and why MNAR in MNARdat?
+```{r}
+#set your seed to ensure the consistency of your results
+set.seed(123)
+#generate 50 values from a normal with mean 0 and variance 0.5
+#repeat the generated value 4 times
+a<-rep(rnorm(50,0,0.5),each=4)
+#generate 50 values from a normal with mean 0 and variance 0.3
+#repeat the generated value 4 times
+b<-rep(rnorm(50,0,0.3),each=4)
+#generate 200 values for the error term from a normal with mean 0 
+#and variance 0.2
+e<-rnorm(200,0,0.2)
+#assign to each observation the values 0,1,2,3
+t<-rep(c(0,1,2,3),50)
+#define the covariate x
+#x=0 to half of the subjects
+#x=1 to the other half
+x<-c(rep(0,100),rep(1,100))
+#calculate the responses
+y<-0.3+a+(0.1+b)*t+0.3*t*x+0.1*x+e
+#define an ID variable in our data set
+id<-rep(1:50,each=4)
+#store your simulated data set in a dataframe
+dat<-as.data.frame(cbind(id,y,t,x))
+colnames<-c("id", "y", "t","x")
+#fit the model with random slope and intercept
+model<-lme(y~ t*x, random= ~1+t| id,data=dat, method="REML",na.action=na.omit)
+
+#time points: 4
+#individuals: 50
+
+#simulate MNAR mechanism
+datMNAR<-numeric()
+for (i in 1:50)
+{tt<-4
+datind<-dat[(id==i),]
+if (sum(datind$y>2)>0)
+  tt<-min(datind$t[(datind$y>2)])
+if (tt==0) {tt<-tt+1}
+datMNAR<-rbind(datMNAR,datind[(1:tt),])
+}
+#fit the model with random slope and intercept under MNAR
+model2<-lme(y~ t*x, random= ~1+t| id,data=datMNAR, method="REML",na.action=na.omit)
+#simulate MAR mechanism
+datMAR<-numeric()
+for (i in 1:50)
+{tt<-4
+datind<-dat[(id==i),]
+if (sum(datind$y>1.7)>0)
+  tt<-(min(datind$t[(datind$y>1.7)])+1)
+if (tt==5) {tt<-tt-1}
+datMAR<-rbind(datMAR,datind[(1:tt),])
+
+}
+#fit the model with random slope and intercept under MAR
+model3<-lme(y~ t*x, random= ~1+t| id,data=datMAR, method="REML",na.action=na.omit)
+
+
+```
+## Question b
+
+If you fit a model with maximal mean structures to the MNAR data set which parameter would be most biased? Which one would have the largest standard error?
+```{r}
+week.f <- factor(datMNAR$t, c(0,1,2,3))
+tt<-as.integer(week.f)
+model_mean<-gls(y ~ week.f*x, corr=corSymm(, form= ~ tt | id),weights = varIdent(form = ~ 1 | week.f), data=datMNAR, method="REML")
+#parameter estimate
+summary(model_mean)
+#interaction between time 4 and x
+```
+## Question c
+Based on your simulation model what should the value of this parameter from (b) be?
+```{r}
+model_mean$coefficients[8]
+```
+## Question d
+Fit a maximal mean structure model using unstructured, independence structure equal variance, LMM with random intercept and random slopes to complete dataset and MAR dataset (total 6 models), and fit a LMM with random intercept and random slopes to the MNAR dataset.
+```{r}
+#fit the maximal mean structure model with unstructured variance
+#datMAR
+week.f <- factor(datMAR$t, c(0,1,2,3))
+tt<-as.integer(week.f)
+model3<-gls(y ~ week.f*x, corr=corSymm(, form= ~ tt | id),
+            weights = varIdent(form = ~ 1 | week.f), data=datMAR, method="REML")
+summary(model3)
+#fit the maximal mean structure model with equal variance 
+#datMAR
+week.f <- factor(datMAR$t, c(0,1,2,3))
+
+model4 <- gls(y ~ week.f*x,data=datMAR, method="REML")
+summary(model4)
+#fit a LMM with random intercept and slope
+#datMAR
+model5<-lme(y~ week.f*x, random= ~1+t| id,data=datMAR, method="REML",na.action=na.omit)
+summary(model5)
+
+#fit the maximal mean structure model with unstructured variance 
+#complete data
+week.f <- factor(dat$t, c(0,1,2,3))
+tt<-as.integer(week.f)
+model6<-gls(y ~ week.f*x, corr=corSymm(, form= ~ tt | id),
+            weights = varIdent(form = ~ 1 | week.f), data=dat, method="REML")
+summary(model6)
+#fit the maximal mean structure model with equal variance 
+#complete data
+week.f <- factor(dat$t, c(0,1,2,3))
+model7 <- gls(y ~ week.f*x, data=dat, method="REML")
+summary(model7)
+#fit a LMM with random intercept and slope
+#complete data
+model8<-lme(y~ week.f*x, random= ~1+t| id,data=dat, method="REML",na.action=na.omit)
+summary(model8)
+#fit a LMM with random intercept and slope
+#MNAR data
+week.f <- factor(datMNAR$t, c(0,1,2,3))
+model9<-lme(y~ week.f*x, random= ~1+t| id,data=datMNAR, method="REML",na.action=na.omit)
+summary(model9)
+
+```
+Compare the estimates of the parameter from question (b) in the seven models.
+```{r}
+#unstructured variance (MAR)
+model3$coefficients[8]
+#independence structure equal variance (MAR)
+model4$coefficients[8]
+#LMM with random intercept and slope (MAR)
+model5$coefficients$fixed[8]
+#unstructured variance (complete)
+model6$coefficients[8]
+#independence structure equal variance (complete)
+model7$coefficients[8]
+#LMM with random intercept and slope (complete)
+model8$coefficients$fixed[8]
+#LMM with random intercept and slope (MNAR)
+model9$coefficients$fixed[8]
+#estimate from point (b)
+model_mean$coefficients[8]
+```
+Compare also the variance components of LMM in the three considered models
+```{r}
+#MAR data
+getVarCov(model5)
+#complete data
+getVarCov(model8)
+#MNAR data
+getVarCov(model9)
+```
+## Question (e)
+Finally estimate the bias for the fixed effect parameter at time point 4 (interaction term with grp) using unstructured, independence structure equal variance, LMM with random intercept and random slopes to complete dataset and MAR dataset (in total 6 models) by simulation.
+
+```{r}
+#true value of the parameter
+true_parameter<-3*0.3
+#unstructured variance (MAR)
+bias_model3<-model3$coefficients[8]-true_parameter
+#independence structure equal variance (MAR)
+bias_model4<-model4$coefficients[8]-true_parameter
+#LMM with random intercept and slope (MAR)
+bias_model5<-model5$coefficients$fixed[8]-true_parameter
+#unstructured variance (complete)
+bias_model6<-model6$coefficients[8]-true_parameter
+#independence structure equal variance (complete)
+bias_model7<-model4$coefficients[8]-true_parameter
+#LMM with random intercept and slope (complete)
+bias_model8<-model8$coefficients$fixed[8]-true_parameter
+print(c(bias_model3,bias_model4,bias_model5,
+      bias_model6,bias_model7,bias_model8))
+```
+
+

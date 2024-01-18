@@ -1,0 +1,224 @@
+---
+title: "Practical 4"
+date: "09/03/2022"
+output: pdf_document
+---
+## Exercise 1
+Consider the following small data set of survival times:
+3, 4$*$, 5, 6, 6$*$, 8$*$, 11, 14, 15, 16$*$
+
+
+where $*$ indicates right-censored observations.
+
+```{r,echo=F,message=F,error=T,warning=F}
+#install all relevant packages
+if(!require(survival)) {
+  install.packages("survival"); require(survival)}
+if(!require(boot)) {
+  install.packages("boot"); require(boot)}
+if(!require(ggplot2)) {
+  install.packages("ggplot2"); require(ggplot2)}
+if(!require(survminer)) {
+  install.packages("survminer"); require(survminer)}
+if(!require(KMsurv)) {
+  install.packages("KMsurv"); require(KMsurv)}
+if(!require(SurvRegCensCov)) {
+  install.packages("SurvRegCensCov"); require(SurvRegCensCov)}
+
+
+```
+
+
+
+## Question (c)
+Calculate and plot the Kaplan–Meier estimate $\hat{S}(t)$ of the survival function S(t) by using R. Note that you have to type in the survival times and the event indicator see the lecture notes.
+```{r}
+#specify the vector of survival and censored times
+t<-c(3, 4, 5, 6, 6, 8, 11, 14, 15, 16)
+#create an indicator variable to denote whether the subject was censored or not
+#1=not censored
+#0= censored
+status<-rep(1,10)
+#specify those who were censored
+status[c(3,5,6,10)]<-1
+#create your survival object in R
+fit<-survfit(Surv(t,status)~1)
+#check numerically your estimated survival function
+summary(fit)
+#check the median survival time
+fit
+#plot the KM estimates for the survival function
+ggsurvplot(fit,data=cbind(as.data.frame(t,status)))
+```
+
+
+## Question (d)
+Fit a survival curve assuming a Weibull distribution. Compute the MLEs for the two parameters using R
+
+```{r}
+#fit the Weibull model
+myfit1<-survreg(Surv(t,status)~1,dist="weibull")
+summary(myfit1)
+#shape parameter
+gamma<-1/myfit1$scale
+#scale parameter
+lambda<-exp(-myfit1$coefficients[1]/myfit1$scale)
+#alternatively use the ConvertWeibull function
+ConvertWeibull(myfit1)
+```
+
+## Question (e)
+
+```{r}
+#check the p-value of log(scale)
+#since p-value<0.05, the log of the shape parameter is different from 0
+#hence an exponential model would not be adequate for such data
+```
+
+## Exercise 2
+
+We will analyse the aml dataset which is available in R. The data is from a clinical trial to evaluate the efficacy of maintenance chemotherapy for acute myelogenous leukaemia. The trial was conducted by Embury et al. (1977) at Stanford University. After reaching a stage of remission through treatment by chemotherapy, patients were randomized into two groups. The first group received maintenance chemotherapy and the second group did not. The aim of the study was to see if maintenance chemotherapy increased the length of the remission. The variable time is length of the complete remission (in weeks). The variable cens is an indicator of right censoring. 1 indicates that the patient had a relapse and so time is the length of the remission. 0 indicates that the patient had left the study or was still in remission in October 1974, that is the length of remission is right-censored. The variable group corresponds to the group into which the patient was randomized. Group 1 received maintenance chemotherapy, group 2 did not. We will use R to analyse these data.
+
+## Question (a)
+Check the data for example use the function str.
+```{r}
+data(aml)
+str(aml)
+summary(aml)
+```
+
+## Question (b)
+Plot the Kaplan Meier estimates of the survival distributions of the two groups in one plot.
+
+```{r}
+#estimate the survival distributions in the two groups
+fit<-survfit(Surv(time,cens)~group,data=aml)
+#plot the survival distributions in the two groups
+ggsurvplot(fit, data = aml)
+```
+
+## Question (c)
+Use the logrank test to assess whether there is a significant difference in survival between the two groups. Formulate the null hypothesis and write down your conclusion.
+
+```{r}
+#implement the logrank test
+test<-survdiff(Surv(time,cens)~group,data=aml)
+log_rank<-(test$obs[1]-test$exp[1])^2/test$exp[1]+(test$obs[2]-test$exp[2])^2/test$exp[2]
+print(log_rank)
+critical_value<-qchisq(0.95,1)
+print(critical_value)
+p_value<-pchisq(log_rank,1,ncp = 0, lower.tail = FALSE)
+print(p_value)
+#decision
+#H0:S1(t)=S2(t) for every t>=0
+log_rank>critical_value
+p_value<0.05
+#no significant difference in survival between the two groups
+```
+
+## Question (d)
+Fit a Cox Proportional Hazard model and test whether the survival is the same in the two groups using a Wald test, a score test and a likelihood ratio test.
+
+```{r}
+#fit a Cox PH model
+coxph_model<-coxph(Surv(time,cens)~group,data=aml)
+summary(coxph_model)
+#wald test
+coxph_model$wald.test
+#score test
+coxph_model$score
+#likelihood ratio test
+lrt<-(-2)*(coxph_model$loglik[1]-coxph_model$loglik[2])
+#no significant difference in survival as suggested by the 
+#p-values of the tests in the output of the model
+#H0 is not rejected at 5% significance level
+```
+
+## Question (e)
+Fit a Proportional Hazard model with a Weibull baseline hazard and test whether the survival is the same in the two groups using a Wald test and a likelihood ratio test.
+```{r}
+#fit a PH model with Weibull baseline hazard
+weibull_model<-survreg(Surv(time,cens)~group,data=aml,dist="weibull")
+summary(weibull_model)
+#wald test
+wald_test_weibull<-weibull_model$coefficients[2]/0.383
+#likelihood ratio test
+lrt<-(-2)*(weibull_model$loglik[1]-weibull_model$loglik[2])
+#significant difference in survival between the two groups 
+#at 5% significance level
+#H0 is rejected at 5% significance level
+```
+
+## Question (f)
+Give the Kaplan-Meier estimate of the survival of non maintenance group at 10 weeks. Provide the corresponding standard error for this estimate.
+```{r}
+summary(fit)
+#Estimated survival at 10 weeks in non maintenance group is given 0.6667
+#Estimated standard error: 0.1361
+#The estimates are the same as at 8 weeks
+#Notice that the last complete remission by 10 weeks was experienced at 8 weeks.
+```
+## Question (g) 
+Test the null hypothesis that the survival at 10 weeks is the same for the two groups.
+```{r}
+#construct the test
+#maintenance group
+surv_10week_grp1<-fit$surv[1]
+var_10week_grp1<-(fit$std.err[1])^2
+summary(fit)
+#non maintenance group
+surv_10week_grp2<-fit$surv[12]
+var_10week_grp2<-(fit$std.err[12])^2
+#test
+var_10_week<-var_10week_grp1+var_10week_grp2
+test_10week<-(surv_10week_grp1-surv_10week_grp2)/sqrt(var_10_week)
+print(test_10week)
+#decision
+#compare your test with the quantile at 0.975 percentile from N(0,1)
+test_10week<qnorm(0.975) 
+#calculate the p-value of your test
+p_value_test<-2*pnorm(test_10week,lower.tail = F)
+0.05<p_value_test
+#survival distributions at 10 weeks is not significantly different in the two groups
+```
+
+
+## Exercise 3
+Survival data on 26 psychiatric inpatients admitted to the University of Iowa hospitals during the years 1935 to 1948. This sample is part of a larger study of psychiatric inpatients discussed by Tsuang and Woolson (1977). Data for each patient consists of age at first admission to the hospital, sex, number of years of follow-up (years from admission to death or censoring) and patient status at the follow-up time. Ultimately we want to know if male psychiatric patients and female psychiatric patients are more likely to die than the general public. The data from the hospitals can be found in the package KMsurv (use data(psych) to obtain the data).
+
+
+```{r}
+#load the data
+data("psych")
+```
+
+(c)Compute the correct Kaplan–Meier estimate
+
+```{r}
+#specify the age at the end of the follow-up
+psych$ageatfu<-psych$age+psych$time
+#compute the correct Kaplan-Meier estimate 
+fit<-survfit(Surv(age,ageatfu,death)~1,data=psych)
+summary(fit)
+```
+
+
+(d) Estimate the hazard ratio for females versus males using a Cox Proportional Hazard model. Interpet the results.
+```{r}
+#fit a PH Cox Regression model taking into account delayed entries
+cox_model_del<-coxph(Surv(age,ageatfu,death)~sex,data=psych)
+summary(cox_model_del)
+# Hazard Ratio for females vs males
+exp(cox_model_del$coefficients)
+```
+
+(e) Check the difference with a Cox proportional hazard model fitted to the data ignoring delayed entry.
+
+```{r}
+#fit a PH Cox Regression model ignoring delayed entries
+cox_model_nodel<-coxph(Surv(ageatfu,death)~sex,data=psych)
+summary(cox_model_nodel)
+
+#compare the two models using the AIC
+AIC(cox_model_nodel,cox_model_del)
+```

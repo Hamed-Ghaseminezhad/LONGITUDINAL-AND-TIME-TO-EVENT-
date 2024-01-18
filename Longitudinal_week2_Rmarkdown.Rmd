@@ -1,0 +1,441 @@
+---
+title: "Practical 2"
+date: "25/02/2022"
+output: pdf_document
+---
+## Exercise 1
+We will model the mean structure of the response in the TCL trial. We will use an unstructured covariance matrix and the gls function in the NMLE package for fitting the various models. Choose ML as method for estimation.
+
+(a) Why using the ML and not REML?.
+```{r,warning=F,message=F}
+#clean the R environment
+rm(list=ls())
+#libraries to be installed
+#ggplot2: producing nicer plots
+if(!require(ggplot2)) {
+  install.packages("ggplot2"); require(ggplot2)}
+#tidyr: allows for easier data munipulation
+if(!require(tidyr)) {
+  install.packages("tidyr"); require(tidyr)}
+#mvtnorm: allows to simulate from multivariate normal
+if(!require(mvtnorm)) {
+  install.packages("mvtnorm"); require(mvtnorm)}
+#knitr: allows to produce nicer tables as summary
+if(!require(knitr)) {
+  install.packages("mvtnorm"); require(knitr)}
+#nmle
+if(!require(nlme)) {
+  install.packages("nlme"); require(nlme)}
+#nmle
+if(!require(readstata13)) {
+  install.packages("readstata13"); require(readstata13)}
+#set your working directory
+#use setwd() 
+
+
+
+```
+\newpage
+(b) Give the difference in mean between the two groups at time point 1 and at time point 4 (second time point) according to this model? What are estimates of the correlations and the variances for each time point?
+
+```{r}
+ds <- read.table("lead_trial.txt",header=T)
+str(ds)
+#longformat
+datalong <- reshape(ds, idvar="ID", varying=c("Y0","Y1","Y4","Y6"),v.names="Y", 
+                    timevar="time",time=c(0,1,4,6), direction="long")
+#model time categorical. Test for treatment effect using ML.
+week.f <- factor(datalong$time, c(0,1,4,6))
+tt<-as.integer(week.f)
+model1 <- gls(Y ~ trt*week.f, corr=corSymm(, form= ~ tt | ID),
+              weights = varIdent(form = ~ 1 | week.f),data=datalong, method="ML")
+model1
+#time 1
+#group A
+cov_groupA_time1<-c(1,0,1,0,0,0,0,0)
+mean_groupA_time1<-t(cov_groupA_time1)%*%model1$coefficients
+#group P
+cov_groupP_time1<-c(1,1,1,0,0,1,0,0)
+mean_groupP_time1<-t(cov_groupP_time1)%*%model1$coefficients
+#difference at time 1
+mean_time1<-mean_groupP_time1-mean_groupA_time1
+print(mean_time1)
+#time 4
+#group A
+cov_groupA_time4<-c(1,0,0,1,0,0,0,0)
+mean_groupA_time4<-t(cov_groupA_time4)%*%model1$coefficients
+#group P
+cov_groupP_time4<-c(1,1,0,1,0,0,1,0)
+mean_groupP_time4<-t(cov_groupP_time4)%*%model1$coefficients
+#difference at time 1
+mean_time4<-mean_groupP_time4-mean_groupA_time4
+print(mean_time4)
+#estimates of the correlations 
+model1$modelStruct
+#the variances for each time point
+diag(getVarCov(model1,individual=2))
+```
+\newpage
+(c) Perform a likelihood ratio test to test the null hypothesis of no treatment effect.
+
+```{r}
+#fit the nested model
+model2 <- gls(Y ~ week.f, corr=corSymm(, form= ~ tt | ID),
+              weights = varIdent(form = ~ 1 | week.f),data=datalong, method="ML")
+#show the results
+summary(model2)
+#perform the likelihood ratio test
+anova(model1,model2)
+#model1 is preferable
+#the treatment has a significant effect on the outcome
+```
+\newpage
+(d) Now fit a model with a linear trend for time. What are estimates of the correlations and the variances for each time point? Com- pare with model 1. Use a likelihood ratio statistic to test the null hypothesis of a linear trend versus the maximum model.
+
+```{r}
+#fit the model
+model3<-gls(Y ~ trt*time, corr=corSymm(, form= ~ tt | ID),
+            weights = varIdent(form = ~ 1 | week.f),data=datalong, method="ML")
+#show the results
+summary(model3)
+#estimates of the correlations 
+model3$modelStruct
+#the variances for each time point
+diag(getVarCov(model3, individual = 2))
+#model 3 is nested in model 1
+anova(model3,model1)
+#No significant evidence for the presence of a linear trend for time
+```
+\newpage
+(e) Now add the quadratic term to the model What are estimates of the correlations and the variances for each time point? Compare with model 1 and model 3. Use a likelihood ratio statistic to test the null hypothesis of a linear trend versus the quadratic model. What is your conclusion.
+
+```{r}
+#add a quadratic term
+timesq<-datalong$time^2
+#fit the model
+model4<-gls(Y ~ trt*time+trt*timesq, corr=corSymm(, form= ~ tt | ID),
+            weights = varIdent(form = ~ 1 | week.f),data=datalong, method="ML")
+#show the results
+summary(model4)
+#estimates of the correlations
+model4$modelStruct
+#the variances for each time point
+diag(getVarCov(model4,individual=2))
+#model 3 is nested in model 1
+anova(model4,model3)
+#No significant evidence for the presence of a linear trend for time
+#Model with quadratic term should be chosen
+```
+\newpage
+(f) Finally fit a spline model
+
+```{r}
+#specify the spline model with knot at week 1
+#spline model with knot at week 1
+week<-datalong$time
+week1<-(week-1)*I(week>1)
+model5<-gls(Y ~ week*trt+week1*trt, corr=corSymm(, form= ~ tt | ID), 
+            weights = varIdent(form = ~ 1 | week.f),data=datalong, method="ML")
+summary(model5)
+#Mean group A at time 1
+cov_model5_groupA_time1<-c(1,1,0,0,0,0)
+mean_model5_groupA_time1<-t(cov_model5_groupA_time1)%*%model5$coefficients
+#Mean group P at time 1
+cov_model5_groupP_time1<-c(1,1,1,0,1,0)
+mean_model5_groupP_time1<-t(cov_model5_groupP_time1)%*%model5$coefficients
+#difference between groups at time 1
+mean_diff_time1_model5<-mean_model5_groupP_time1-mean_model5_groupA_time1
+print(mean_diff_time1_model5)
+#Mean group A at time 4
+cov_model5_groupA_time4<-c(1,4,0,3,0,0)
+mean_model5_groupA_time4<-t(cov_model5_groupA_time4)%*%model5$coefficients
+#Mean group P at time 4
+cov_model5_groupP_time4<-c(1,4,1,3,4,3)
+mean_model5_groupP_time4<-t(cov_model5_groupP_time4)%*%model5$coefficients
+#difference between groups at time 4
+mean_diff_time4_model5<-mean_model5_groupP_time4-mean_model5_groupA_time4
+print(mean_diff_time4_model5)
+#estimates of the correlations 
+model5$modelStruct
+#the variances for each time point
+diag(getVarCov(model1,individual=2))
+#Compare this model with the maximum model
+anova(model1,model5)
+```
+
+(g) Compare the three models: linear trend, quadratic trend, splines usings AIC. What is your conclusion?
+
+```{r}
+#linear trend model3
+aic_model3<-AIC(model3)
+#quadratic trend model4
+aic_model4<-AIC(model4)
+#spline model5
+aic_model5<-AIC(model5)
+#print the results
+print(c(aic_model3,aic_model4,aic_model5))
+#the spline model seems to be the best choice
+```
+
+(h) In the book they estimated this model under the constraint that the means in the two groups are the same at time point 0. 
+Verify that you understand the code and the model. What is the difference between the two groups at time point 1 according to this model?
+```{r}
+trt.week<-week*I(datalong$trt=="A")
+trt.week1<-week1*I(datalong$trt=="A")
+model6<-gls(Y ~ week+trt.week+week1+trt.week1,corr=corSymm(, form= ~ tt | ID),
+            weights = varIdent(form = ~ 1 | week.f),data=datalong, method="ML")
+summary(model6)
+#Mean group A at time 1
+cov_model6_groupA_time1<-c(1,1,1,0,0)
+mean_model6_groupA_time1<-t(cov_model6_groupA_time1)%*%model6$coefficients
+#Mean group P at time 1
+cov_model6_groupP_time1<-c(1,1,0,0,0)
+mean_model6_groupP_time1<-t(cov_model6_groupP_time1)%*%model6$coefficients
+#difference between groups at time 1
+mean_diff_time1_model6<-mean_model6_groupP_time1-mean_model6_groupA_time1
+print(mean_diff_time1_model6)
+```
+\newpage
+## Exercise 2
+We will model the covariance structure of a subset of the Data from Exercise Therapy Study.
+Reference: Freund, R.J., Littell, R.C. and Spector, P.C. (1986). SAS Systems for Linear Models, Cary, NC: SAS Institute Inc.
+The data are from a study of exercise therapies, where 37 patients were assigned to one of two weightlifting programs. In the first program (treatment 1), the number of repetitions
+2
+was increased as subjects became stronger. In the second program (treatment 2), the num- ber of repetitions was fixed but the amount of weight was increased as subjects became stronger. Measures of strength were taken at baseline (day 0), and on days 2, 4, 6, 8, 10, and 12.
+Variable List:
+ID, PROGRAM (1=Repetitions Increase; 2=Weights Increase), Response at Time 1, Re- sponse at Time 2, Response at Time 3, Response at Time 4, Response at Time 5, Response at Time 6, Response at Time 7.We will perform a simulation study to compare the performance of the OLS estimator and the GLS estimator for correlated data.
+
+(a)Check the number of observed subjects. How many missing variables are there for each time point? Reshape the data in long format.
+
+```{r,warning=F,message=F}
+#read the data from STATA data set
+dat <- read.dta13("exercise.dta")
+#count missing variables per each time
+count_NAs<-c(sum(is.na(dat$y0)),sum(is.na(dat$y2)),sum(is.na(dat$y4)),
+             sum(is.na(dat$y6)),sum(is.na(dat$y8)),sum(is.na(dat$y10)),sum(is.na(dat$y12)))
+names(count_NAs)<-colnames(dat)[3:9]
+print(count_NAs)
+#read the data in long format
+datalong <- reshape(dat, idvar="ID", varying=c("y0","y2","y4","y6","y8","y10","y12"),v.names="Y", 
+                    timevar="time",time=c(0,2,4,6,8,10,12), direction="long")
+
+```
+
+\newpage
+
+(b) Fit a model with an unstructured covariance matrix. Use REML for estimation of the parameters and use a maximal model for the mean structure.
+
+```{r,warning=F,message=F}
+#week.f as categorical version of week
+week.f <- factor(datalong$time, c(0,2,4,6,8,10,12))
+#assign tt to be the integer version of week.f 
+tt<-as.integer(week.f)
+#fit the model
+model1 <- gls(Y ~ group*week.f, corr=corSymm(, form= ~ tt | id),
+  weights = varIdent(form = ~ 1 | week.f),data=datalong,
+  method="REML",na.action=na.omit)
+#correlation matrix for the second subject in your dataset
+cov2cor(getVarCov(model1,individual=2))
+
+```
+
+(c) Now fit also a model with an autoregressive correlation structure (corAR1). Note that ?corClasses will give you a list of all possible structures. Print the correlation matrix for subject 2. What is the estimate for the correlation 
+parameter? And the variance?
+
+```{r}
+?corClasses
+#fit the model with autoregressive correlation structure
+model1_AR1 <- gls(Y ~ group*week.f, corr=corAR1(, form= ~ tt | id),
+  weights = varIdent(form = ~ 1 | week.f),data=datalong,
+  method="REML",na.action=na.omit)
+#correlation matrix for the second subject in your dataset
+cov2cor(getVarCov(model1_AR1,individual=2))
+#variance estimates
+variances<-diag(cov2cor(getVarCov(model1_AR1,individual=2)))
+print(variances)
+#covariance estimates are the off diagonal elements
+covarinaces<-cov2cor(getVarCov(model1_AR1,individual=2))
+covarinaces
+```
+
+\newpage
+(d) Now fit also a model with an exponential correlation structure (corExp). Print the correlation matrix for subject 2. What is the estimate for the correlation parameter? And the variance?
+```{r}
+#fit the model with autoregressive correlation structure
+model1_Exp <- gls(Y ~ group*week.f, corr=corExp(, form= ~ tt | id),
+  weights = varIdent(form = ~ 1 | week.f),data=datalong,
+  method="REML",na.action=na.omit)
+#correlation matrix for the second subject in your dataset
+cov2cor(getVarCov(model1_Exp,individual=2))
+#variance estimates
+print(diag(cov2cor(getVarCov(model1_Exp,individual=2))))
+#covariance estimates are the off diagonal elements
+```
+\newpage
+(e) Compare the different models in terms of correlation matrices and model fit. When the models are nested use REML likelihoods and compute a p-value. For non nested models compare the AIC’s of the models.
+
+```{r}
+#we are comparing models with different covariance structures
+#we can use AIC
+#model1: varIdent
+AIC_ident<-AIC(model1)
+#model1: AR1
+AIC_AR1<-AIC(model1_AR1)
+#model1: corExp
+AIC_Exp<-AIC(model1_Exp)
+#store AICs in a vector
+AIC<-c(AIC_ident,AIC_AR1,AIC_Exp)
+names(AIC)<-c("Identity","AR1","Exponential")
+print(AIC)
+```
+\newpage
+
+(f) For your favourite structure test whether there is a difference between the two groups using a likelihood ratio test.
+
+```{r}
+#model1_Exp and model1_AR1 have the same AIC
+#toss a coin to decide your favorite one
+#model1_Exp
+summary(model1_Exp)
+#look at the p-value for the effect of group 2 on the response
+#p-value>0.05
+#no significant difference between group 1 and group 2
+summary(model1_AR1)
+#look at the p-value for the effect of group 2 on the response
+#p-value>0.05
+#no significant difference between group 1 and group 2
+```
+\newpage
+## Exercise 3
+
+We are now further with the dataset of tutorial 1 on data on serum cholesterol from the National Cooperative Gallstone Study. Remember this dataset is a subset of subjects with complete information.
+
+(a) Compute the differences in mean between the two groups at time 0, 6 and 12 according to this model and compare the results with the figure of tutorial 1.
+
+```{r,warning=F,message=F}
+data<-read.table("dataex1.txt",header=T)
+
+#Create data set for the treatment group
+treat<-subset(data,data$grp==1)
+#Create data set for the placebo group
+plac<-subset(data,data$grp==2)
+#reshape the data set for the treatment group
+treatlong<-reshape(treat,varying=c("t1","t2","t3"),v.names="Y",
+                   timevar="time",time=c(0,6,12),direction="long")
+#reshape the data set for the placebo group
+placlong<-reshape(plac,varying=c("t1","t2","t3"),v.names="Y",
+                  timevar="time",time=c(0,6,12),direction="long")
+
+#data in long format
+datalong<-rbind(treatlong,placlong)
+#treat week as factor
+week.f <- factor(datalong$time, c(0,6,12))
+tt<-as.integer(week.f)
+#fit the model
+model1 <- gls(Y ~ grp*week.f, corr=corSymm(, form= ~ tt | id),
+           weights = varIdent(form = ~ 1 | week.f),
+           data=datalong, method="ML")
+summary(model1)
+
+#mean differences for the two groups at time 0
+cov_time0_grp0<-c(1,0,0,0,0,0)
+mean_time0_grp0<-t(cov_time0_grp0)%*%model1$coefficients
+cov_time0_grp1<-c(1,1,0,0,0,0)
+mean_time0_grp1<-t(cov_time0_grp1)%*%model1$coefficients
+diff_mean_time0<-mean_time0_grp1-mean_time0_grp0
+print(diff_mean_time0)
+#mean differences for the two groups at time 6
+cov_time6_grp0<-c(1,0,1,0,0,0)
+mean_time6_grp0<-t(cov_time6_grp0)%*%model1$coefficients
+cov_time6_grp1<-c(1,1,1,0,1,0)
+mean_time6_grp1<-t(cov_time6_grp1)%*%model1$coefficients
+diff_mean_time6<-mean_time6_grp1-mean_time6_grp0
+print(diff_mean_time6)
+
+#mean differences for the two groups at time 6
+cov_time12_grp0<-c(1,0,0,1,0,0)
+mean_time12_grp0<-t(cov_time12_grp0)%*%model1$coefficients
+cov_time12_grp1<-c(1,1,1,1,1,1)
+mean_time12_grp1<-t(cov_time12_grp1)%*%model1$coefficients
+diff_mean_time12<-mean_time12_grp1-mean_time12_grp0
+print(diff_mean_time12)
+
+```
+\newpage
+(b) Now repeat the analysis of (a) for the whole dataset over 5 months. All data is in dataset ”datachol.txt”. Use na.action=na.omit to use all observed information. Compute again the differences in means between the two groups for the first three time points according to this model. Compare your results with (a). Any explanation for the differences?
+
+```{r,message=F,warning=F}
+data<-read.table("datachol.txt")
+names(data)<-c("grp","id","t1","t2","t3","t4","t5")
+#pay attention t3, t4, t5 must be treated as numeric
+data$t3<-as.numeric(data$t3)
+data$t4<-as.numeric(data$t4)
+data$t5<-as.numeric(data$t5)
+#reshape the data set for the placebo group
+datalong<-reshape(data,idvar="ID",varying=c("t1","t2","t3","t4","t5"),v.names="Y",
+                  timevar="time",time=c(0,6,12,20,24),direction="long")
+#treat week as factor
+week.f <- factor(datalong$time, c(0,6,12,20,24))
+tt<-as.integer(week.f)
+#fit the model
+model2 <- gls(Y ~ grp*week.f, corr=corSymm(, form= ~ tt | id),
+  weights = varIdent(form = ~ 1 | week.f),data=datalong,
+  method="REML",na.action=na.omit)
+
+
+summary(model2)
+#mean differences for the two groups at time 0
+cov_time0_grp0_REML<-c(1,0,0,0,0,0,0,0,0,0)
+mean_time0_grp0_REML<-t(cov_time0_grp0_REML)%*%model2$coefficients
+cov_time0_grp1_REML<-c(1,1,0,0,0,0,0,0,0,0)
+mean_time0_grp1_REML<-t(cov_time0_grp1_REML)%*%model2$coefficients
+diff_mean_time0_REML<-mean_time0_grp1_REML-mean_time0_grp0_REML
+print(diff_mean_time0_REML)
+#mean differences for the two groups at time 6
+cov_time6_grp0_REML<-c(1,0,1,0,0,0,0,0,0,0) 
+mean_time6_grp1_REML<-t(cov_time6_grp0_REML)%*%model2$coefficients
+cov_time6_grp1_REML<-c(1,1,1,0,0,0,1,0,0,0)
+mean_time6_grp1_REML<-t(cov_time6_grp1_REML)%*%model2$coefficients
+diff_mean_time6_REML<-mean_time6_grp1_REML-mean_time6_grp1_REML
+print(diff_mean_time6_REML)
+
+#mean differences for the two groups at time 12
+cov_time12_grp0_REML<-c(1,0,0,1,0,0,0,0,0,0)
+mean_time12_grp0_REML<-t(cov_time12_grp0_REML)%*%model2$coefficients
+cov_time12_grp1_REML<-c(1,1,0,1,0,0,0,1,0,0)
+mean_time12_grp1_REML<-t(cov_time12_grp1_REML)%*%model2$coefficients
+diff_mean_time12_REML<-mean_time12_grp1_REML-mean_time12_grp0_REML
+print(diff_mean_time12_REML)
+```
+  
+
+(c) Now fit a model with the compound symmetry structure for the covariance matrix. For the mean structure use the maximal model. Use REML for estimation. Give the correlation parameter and the variance of the residuals.
+
+```{r}
+?corClasses
+model3 <- gls(Y ~ grp*week.f, corr=corCompSymm(, form= ~ tt | id),
+  weights = varIdent(form = ~ 1 | week.f),data=datalong,
+  method="REML",na.action=na.omit)
+summary(model3)
+#Rho is the estimated correlation parameter
+summary(model3$modelStruct)
+#Variance function: 
+#variance at time point 0
+sigma(model3)
+#relative increase or decrease in variance over time
+#the estimates are present in the output
+rel_var<-c(1,0.9106329,0.8731184,0.8968869,1.0769694)
+#multiply the variance at time 0 by the previous vector 
+sigma(model3)*rel_var
+#these are the estimates for the variances of the residuals
+```
+
+(d) Now based on the output obtained in (b) which values would you expect for the variance of the estimators of the intercept and the variance of the residual when using a linear mixed model with a random intercept? Verify you result by fitting this model:
+
+```{r}
+#fit the linear mixed model with random intercept
+model4 <- lme(Y ~ grp*week.f, random= ~1| id,data=datalong,method="REML",na.action=na.omit)
+summary(model4)
+#Variance of intercept=(37.51785)^2
+#Variance of the residual=(23.71617)^2
+```
